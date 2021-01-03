@@ -75,7 +75,7 @@ namespace OpenRA.Mods.Common.LoadScreens
 
 				var files = Info[key].Split(',');
 				var file = files.Random(Game.CosmeticRandom);
-				using (var stream = ModData.DefaultFileSystem.Open(file))
+				using (var stream = ModData.DefaultFileSystem.Open(Platform.ResolvePath(file)))
 				{
 					sheet = new Sheet(SheetType.BGRA, stream);
 					sheet.GetTexture().ScaleFilter = TextureScaleFilter.Linear;
