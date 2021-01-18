@@ -64,8 +64,8 @@ namespace OpenRA.Mods.AS.Traits
 		{
 			this.info = info;
 			self = init.Self;
-			ticks = info.ChargeDuration;
-			productionDuration = info.ChargeDuration;
+			ticks = 0;
+			productionDuration = 0;
 		}
 
 		void GrantCondition(Actor self, string cond)
@@ -125,33 +125,38 @@ namespace OpenRA.Mods.AS.Traits
 				else
 					Game.Sound.PlayNotification(self.World.Map.Rules, self.Owner, "Speech", info.BlockedAudio, self.Owner.Faction.InternalName);
 
-				var summedCost = 0;
-				foreach (var p in self.TraitOrDefault<Cargo>().Passengers)
-				{
-						summedCost += p.Info.TraitInfos<ValuedInfo>().First().Cost;
-
-						if( p.TraitOrDefault<Cargo>() != null )
-						{
-							foreach (var p2 in p.TraitOrDefault<Cargo>().Passengers)
-							{
-									summedCost += p2.Info.TraitInfos<ValuedInfo>().First().Cost;
-							}
-						}
-				}
-				// TODO this should be changed to a production modifier
-				var modifiers = self.TraitsImplementing<IReloadModifier>()
-					.Select(m => m.GetReloadModifier());
-
-				productionDuration = summedCost * Util.ApplyPercentageModifiers(info.ChargeDuration, modifiers) / 1000;
-				productionDuration = productionDuration == 0 ? info.ChargeDuration : productionDuration;
-				ticks = productionDuration;
+				ticks = calculateProductionCost();
 			}
+		}
+
+		int calculateProductionCost()
+		{
+			var summedCost = 0;
+			foreach (var p in self.TraitOrDefault<Cargo>().Passengers)
+			{
+					summedCost += p.Info.TraitInfos<ValuedInfo>().First().Cost;
+
+					if( p.TraitOrDefault<Cargo>() != null )
+					{
+						foreach (var p2 in p.TraitOrDefault<Cargo>().Passengers)
+						{
+								summedCost += p2.Info.TraitInfos<ValuedInfo>().First().Cost;
+						}
+					}
+			}
+			// here we use a reload modifier even though this is a production, a bit "hacky" but actually exactly what we want
+			var modifiers = self.TraitsImplementing<IReloadModifier>()
+				.Select(m => m.GetReloadModifier());
+
+			productionDuration = summedCost * Util.ApplyPercentageModifiers(info.ChargeDuration, modifiers) / 1000;
+			productionDuration = productionDuration == 0 ? 0 : productionDuration;
+			return productionDuration;
 		}
 
 		protected override void TraitEnabled(Actor self)
 		{
 			if (info.ResetTraitOnEnable)
-				ticks = info.ChargeDuration;
+				ticks = calculateProductionCost();
 		}
 
 		float ISelectionBar.GetValue()
@@ -162,6 +167,9 @@ namespace OpenRA.Mods.AS.Traits
 			var viewer = self.World.RenderPlayer ?? self.World.LocalPlayer;
 			if (viewer != null && !Info.SelectionBarDisplayRelationships.HasStance(self.Owner.RelationshipWith(viewer)))
 				return 0f;
+
+			if (productionDuration == 0)
+				return 0;
 
 			return (float)(productionDuration - ticks) / productionDuration;
 		}
