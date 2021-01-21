@@ -24,11 +24,15 @@ namespace OpenRA.Mods.Common.Traits
 		[Desc("e.g. Infantry, Vehicles, Aircraft, Buildings")]
 		public readonly string[] Produces = { };
 
+		[Desc("should the units be produced into cargo")]
+		public readonly bool ProduceIntoCargo = false;
+
 		public override object Create(ActorInitializer init) { return new Production(init, this); }
 	}
 
 	public class Production : PausableConditionalTrait<ProductionInfo>
 	{
+		readonly ProductionInfo info;
 		RallyPoint rp;
 
 		public string Faction { get; private set; }
@@ -36,6 +40,7 @@ namespace OpenRA.Mods.Common.Traits
 		public Production(ActorInitializer init, ProductionInfo info)
 			: base(info)
 		{
+			this.info = info;
 			Faction = init.GetValue<FactionInit, string>(init.Self.Owner.Faction.InternalName);
 		}
 
@@ -87,26 +92,48 @@ namespace OpenRA.Mods.Common.Traits
 
 			self.World.AddFrameEndTask(w =>
 			{
-				var newUnit = self.World.CreateActor(producee.Name, td);
+				if (info.ProduceIntoCargo)
+				{
+					var newUnit = self.World.CreateActor(false, producee.Name, td);
 
-				var move = newUnit.TraitOrDefault<IMove>();
-				if (exitinfo != null && move != null)
-					foreach (var cell in exitLocations)
-						newUnit.QueueActivity(new AttackMoveActivity(newUnit, () => move.MoveTo(cell, 1, evaluateNearestMovableCell: true, targetLineColor: Color.OrangeRed)));
+					self.TraitOrDefault<Cargo>().Load(self, newUnit);
 
-				if (!self.IsDead)
-					foreach (var t in self.TraitsImplementing<INotifyProduction>())
-						t.UnitProduced(self, newUnit, exit);
+					if (!self.IsDead)
+						foreach (var t in self.TraitsImplementing<INotifyProduction>())
+							t.UnitProduced(self, newUnit, exit);
 
-				var notifyOthers = self.World.ActorsWithTrait<INotifyOtherProduction>();
-				foreach (var notify in notifyOthers)
-					notify.Trait.UnitProducedByOther(notify.Actor, self, newUnit, productionType, td);
+					var notifyOthers = self.World.ActorsWithTrait<INotifyOtherProduction>();
+					foreach (var notify in notifyOthers)
+						notify.Trait.UnitProducedByOther(notify.Actor, self, newUnit, productionType, td);
+				}
+				else
+				{
+					var newUnit = self.World.CreateActor(producee.Name, td);
+
+					var move = newUnit.TraitOrDefault<IMove>();
+					if (exitinfo != null && move != null)
+						foreach (var cell in exitLocations)
+							newUnit.QueueActivity(new AttackMoveActivity(newUnit,
+								() => move.MoveTo(cell, 1, evaluateNearestMovableCell: true,
+									targetLineColor: Color.OrangeRed)));
+
+					if (!self.IsDead)
+						foreach (var t in self.TraitsImplementing<INotifyProduction>())
+							t.UnitProduced(self, newUnit, exit);
+
+					var notifyOthers = self.World.ActorsWithTrait<INotifyOtherProduction>();
+					foreach (var notify in notifyOthers)
+						notify.Trait.UnitProducedByOther(notify.Actor, self, newUnit, productionType, td);
+				}
+
+
+
 			});
 		}
 
 		public delegate void ManipulateActorCallback(Actor unit);
 
-		public virtual void DoProduction(Actor self, ActorInfo producee, ExitInfo exitinfo, string productionType, TypeDictionary inits, ManipulateActorCallback OnSpawnCallback)
+		public virtual void DoProduction(Actor self, ActorInfo producee, ExitInfo exitinfo, string productionType, TypeDictionary inits, ManipulateActorCallback onSpawnCallback)
 		{
 			var exit = CPos.Zero;
 			var exitLocations = new List<CPos>();
@@ -150,7 +177,7 @@ namespace OpenRA.Mods.Common.Traits
 			{
 				var newUnit = self.World.CreateActor(producee.Name, td);
 
-				OnSpawnCallback(newUnit);
+				onSpawnCallback(newUnit);
 
 				var move = newUnit.TraitOrDefault<IMove>();
 				if (exitinfo != null && move != null)
@@ -196,7 +223,7 @@ namespace OpenRA.Mods.Common.Traits
 			return false;
 		}
 
-		public virtual bool Produce(Actor self, ActorInfo producee, string productionType, TypeDictionary inits, int refundableValue, ManipulateActorCallback OnSpawnCallback)
+		public virtual bool Produce(Actor self, ActorInfo producee, string productionType, TypeDictionary inits, int refundableValue, ManipulateActorCallback onSpawnCallback)
 		{
 			if (IsTraitDisabled || IsTraitPaused || Reservable.IsReserved(self))
 				return false;
@@ -205,7 +232,7 @@ namespace OpenRA.Mods.Common.Traits
 			var exit = SelectExit(self, producee, productionType);
 			if (exit != null || self.OccupiesSpace == null || !producee.HasTraitInfo<IOccupySpaceInfo>())
 			{
-				DoProduction(self, producee, exit?.Info, productionType, inits, OnSpawnCallback);
+				DoProduction(self, producee, exit?.Info, productionType, inits, onSpawnCallback);
 				return true;
 			}
 
