@@ -80,6 +80,11 @@ namespace OpenRA.Mods.Common.Traits
 			"A dictionary of [actor id]: [condition].")]
 		public readonly Dictionary<string, string> PassengerConditions = new Dictionary<string, string>();
 
+		[ActorReference(dictionaryReference: LintDictionaryReference.Keys)]
+		[Desc("Conditions to grant when specified actors are loaded inside passengers of the transport.",
+			"A dictionary of [actor id]: [condition].")]
+		public readonly Dictionary<string, string> PassengerOfPassengersConditions = new Dictionary<string, string>();
+
 		[Desc("Change the passengers owner if transport owner changed")]
 		public readonly bool OwnerChangedAffectsPassengers = true;
 
@@ -175,8 +180,19 @@ namespace OpenRA.Mods.Common.Traits
 			if (cargo.Any())
 			{
 				foreach (var c in cargo)
+				{
 					if (Info.PassengerConditions.TryGetValue(c.Info.Name, out var passengerCondition))
 						passengerTokens.GetOrAdd(c.Info.Name).Push(self.GrantCondition(passengerCondition));
+
+					if (c.TraitOrDefault<Cargo>() != null)
+					{
+						foreach (var p in c.TraitOrDefault<Cargo>().Passengers)
+						{
+							if (Info.PassengerOfPassengersConditions.TryGetValue(p.Info.Name, out var passengerOfPassengerCondition))
+								passengerTokens.GetOrAdd(p.Info.Name).Push(self.GrantCondition(passengerOfPassengerCondition));
+						}
+					}
+				}
 
 				if (!string.IsNullOrEmpty(Info.LoadedCondition))
 					loadedTokens.Push(self.GrantCondition(Info.LoadedCondition));
@@ -402,6 +418,15 @@ namespace OpenRA.Mods.Common.Traits
 
 			if (Info.PassengerConditions.TryGetValue(a.Info.Name, out var passengerCondition))
 				passengerTokens.GetOrAdd(a.Info.Name).Push(self.GrantCondition(passengerCondition));
+
+			if (a.TraitOrDefault<Cargo>() != null)
+			{
+				foreach (var p in a.TraitOrDefault<Cargo>().Passengers)
+				{
+					if (Info.PassengerOfPassengersConditions.TryGetValue(p.Info.Name, out var passengerOfPassengerCondition))
+						passengerTokens.GetOrAdd(p.Info.Name).Push(self.GrantCondition(passengerOfPassengerCondition));
+				}
+			}
 
 			if (!string.IsNullOrEmpty(Info.LoadedCondition))
 				loadedTokens.Push(self.GrantCondition(Info.LoadedCondition));
