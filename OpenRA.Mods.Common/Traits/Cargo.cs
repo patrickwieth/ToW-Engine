@@ -103,6 +103,7 @@ namespace OpenRA.Mods.Common.Traits
 		readonly List<Actor> cargo = new List<Actor>();
 		readonly HashSet<Actor> reserves = new HashSet<Actor>();
 		readonly Dictionary<string, Stack<int>> passengerTokens = new Dictionary<string, Stack<int>>();
+		readonly Dictionary<string, Stack<int>> passengerToTransportTokens = new Dictionary<string, Stack<int>>();
 		readonly Lazy<IFacing> facing;
 		readonly bool checkTerrainType;
 
@@ -184,12 +185,11 @@ namespace OpenRA.Mods.Common.Traits
 					if (Info.PassengerConditions.TryGetValue(c.Info.Name, out var passengerCondition))
 						passengerTokens.GetOrAdd(c.Info.Name).Push(self.GrantCondition(passengerCondition));
 
-					if (c.TraitOrDefault<Cargo>() != null)
+					// here we add conditions to the transport of self, derived from passengers of self
+					if (self.TraitOrDefault<Passenger>() != null && self.TraitOrDefault<Passenger>().Transport != null)
 					{
-						foreach (var p in c.TraitOrDefault<Cargo>().Passengers)
-						{
-							if (Info.PassengerOfPassengersConditions.TryGetValue(p.Info.Name, out var passengerOfPassengerCondition))
-								passengerTokens.GetOrAdd(p.Info.Name).Push(self.GrantCondition(passengerOfPassengerCondition));
+						if (self.TraitOrDefault<Passenger>().Transport.TraitOrDefault<Cargo>().Info.PassengerOfPassengersConditions.TryGetValue(c.Info.Name, out var passengerOfPassengerCondition)) {
+							passengerToTransportTokens.GetOrAdd(c.Info.Name).Push(self.TraitOrDefault<Passenger>().Transport.GrantCondition(passengerOfPassengerCondition));
 						}
 					}
 				}
@@ -373,6 +373,9 @@ namespace OpenRA.Mods.Common.Traits
 			if (passengerTokens.TryGetValue(passenger.Info.Name, out var passengerToken) && passengerToken.Any())
 				self.RevokeCondition(passengerToken.Pop());
 
+			if (passengerToTransportTokens.TryGetValue(passenger.Info.Name, out var passengerOfPassengerToken) && passengerOfPassengerToken.Any())
+				self.RevokeCondition(passengerOfPassengerToken.Pop());
+
 			if (loadedTokens.Any())
 				self.RevokeCondition(loadedTokens.Pop());
 
@@ -419,12 +422,11 @@ namespace OpenRA.Mods.Common.Traits
 			if (Info.PassengerConditions.TryGetValue(a.Info.Name, out var passengerCondition))
 				passengerTokens.GetOrAdd(a.Info.Name).Push(self.GrantCondition(passengerCondition));
 
-			if (a.TraitOrDefault<Cargo>() != null)
+			// here we add conditions to the transport of self, derived from passengers of self
+			if (self.TraitOrDefault<Passenger>() != null && self.TraitOrDefault<Passenger>().Transport != null)
 			{
-				foreach (var p in a.TraitOrDefault<Cargo>().Passengers)
-				{
-					if (Info.PassengerOfPassengersConditions.TryGetValue(p.Info.Name, out var passengerOfPassengerCondition))
-						passengerTokens.GetOrAdd(p.Info.Name).Push(self.GrantCondition(passengerOfPassengerCondition));
+				if (self.TraitOrDefault<Passenger>().Transport.TraitOrDefault<Cargo>().Info.PassengerOfPassengersConditions.TryGetValue(a.Info.Name, out var passengerOfPassengerCondition)) {
+					passengerToTransportTokens.GetOrAdd(a.Info.Name).Push(self.TraitOrDefault<Passenger>().Transport.GrantCondition(passengerOfPassengerCondition));
 				}
 			}
 

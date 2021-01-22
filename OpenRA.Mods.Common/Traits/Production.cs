@@ -10,6 +10,7 @@
 #endregion
 
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using OpenRA.Mods.Common.Activities;
 using OpenRA.Primitives;
@@ -104,7 +105,7 @@ namespace OpenRA.Mods.Common.Traits
 					foreach (var p in self.TraitOrDefault<Cargo>().Passengers)
 					{
 						if (p.TraitOrDefault<Cargo>().HasSpace(producee.TraitInfo<PassengerInfo>().Weight)) {
-							self.TraitOrDefault<Cargo>().Load(self, newUnit);
+							p.TraitOrDefault<Cargo>().Load(p, newUnit);
 
 							if (!self.IsDead)
 								foreach (var t in self.TraitsImplementing<INotifyProduction>())
