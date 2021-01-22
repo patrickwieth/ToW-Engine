@@ -27,6 +27,9 @@ namespace OpenRA.Mods.Common.Traits
 		[Desc("should the units be produced into cargo")]
 		public readonly bool ProduceIntoCargo = false;
 
+		[Desc("should the units be produced into the cargo of the cargo")]
+		public readonly bool ProduceIntoCargoOfCargo = false;
+
 		public override object Create(ActorInitializer init) { return new Production(init, this); }
 	}
 
@@ -92,7 +95,31 @@ namespace OpenRA.Mods.Common.Traits
 
 			self.World.AddFrameEndTask(w =>
 			{
-				if (info.ProduceIntoCargo)
+
+				// Here we check if production should go into the cargo of a passenger and if so, if cargo trait exists and if there is space to do so
+				if (info.ProduceIntoCargoOfCargo && self.TraitOrDefault<Cargo>() != null && self.TraitOrDefault<Cargo>().Passengers.Any(p => p.TraitOrDefault<Cargo>().HasSpace(producee.TraitInfo<PassengerInfo>().Weight)))
+				{
+					var newUnit = self.World.CreateActor(false, producee.Name, td);
+
+					foreach (var p in self.TraitOrDefault<Cargo>().Passengers)
+					{
+						if (p.TraitOrDefault<Cargo>().HasSpace(producee.TraitInfo<PassengerInfo>().Weight)) {
+							self.TraitOrDefault<Cargo>().Load(self, newUnit);
+
+							if (!self.IsDead)
+								foreach (var t in self.TraitsImplementing<INotifyProduction>())
+									t.UnitProduced(self, newUnit, exit);
+
+							var notifyOthers = self.World.ActorsWithTrait<INotifyOtherProduction>();
+							foreach (var notify in notifyOthers)
+								notify.Trait.UnitProducedByOther(notify.Actor, self, newUnit, productionType, td);
+
+							break;
+						}
+					}
+				}
+				// Here we check if production should go into the cargo of the producer and if so, if cargo trait exists and if there is space to do so
+				else if (info.ProduceIntoCargo && self.TraitOrDefault<Cargo>() != null && self.TraitOrDefault<Cargo>().HasSpace(producee.TraitInfo<PassengerInfo>().Weight))
 				{
 					var newUnit = self.World.CreateActor(false, producee.Name, td);
 
@@ -106,6 +133,7 @@ namespace OpenRA.Mods.Common.Traits
 					foreach (var notify in notifyOthers)
 						notify.Trait.UnitProducedByOther(notify.Actor, self, newUnit, productionType, td);
 				}
+				// this is actually the good old production
 				else
 				{
 					var newUnit = self.World.CreateActor(producee.Name, td);
@@ -125,9 +153,6 @@ namespace OpenRA.Mods.Common.Traits
 					foreach (var notify in notifyOthers)
 						notify.Trait.UnitProducedByOther(notify.Actor, self, newUnit, productionType, td);
 				}
-
-
-
 			});
 		}
 
