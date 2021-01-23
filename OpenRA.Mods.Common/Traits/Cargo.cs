@@ -80,6 +80,19 @@ namespace OpenRA.Mods.Common.Traits
 			"A dictionary of [actor id]: [condition].")]
 		public readonly Dictionary<string, string> PassengerConditions = new Dictionary<string, string>();
 
+		[ActorReference(dictionaryReference: LintDictionaryReference.Keys)]
+		[Desc("Conditions to grant when specified actors are loaded inside passengers of the transport.",
+			"A dictionary of [actor id]: [condition].")]
+		public readonly Dictionary<string, string> PassengerOfPassengersConditions = new Dictionary<string, string>();
+
+		[GrantedConditionReference]
+		[Desc("The condition to grant to self while the cargo of the passengers is full.")]
+		public readonly string passengersCargoFullCondition = null;
+
+		[GrantedConditionReference]
+		[Desc("The condition to grant to self while the cargo is full.")]
+		public readonly string cargoFullCondition = null;
+
 		[Desc("Change the passengers owner if transport owner changed")]
 		public readonly bool OwnerChangedAffectsPassengers = true;
 
@@ -98,6 +111,7 @@ namespace OpenRA.Mods.Common.Traits
 		readonly List<Actor> cargo = new List<Actor>();
 		readonly HashSet<Actor> reserves = new HashSet<Actor>();
 		readonly Dictionary<string, Stack<int>> passengerTokens = new Dictionary<string, Stack<int>>();
+		readonly Dictionary<string, Stack<int>> passengerToTransportTokens = new Dictionary<string, Stack<int>>();
 		readonly Lazy<IFacing> facing;
 		readonly bool checkTerrainType;
 
@@ -105,6 +119,8 @@ namespace OpenRA.Mods.Common.Traits
 		int reservedWeight = 0;
 		Aircraft aircraft;
 		int loadingToken = Actor.InvalidConditionToken;
+		int cargoFullToken = Actor.InvalidConditionToken;
+		int passengersCargoFullToken = Actor.InvalidConditionToken;
 		Stack<int> loadedTokens = new Stack<int>();
 		bool takeOffAfterLoad;
 		bool initialised;
@@ -175,8 +191,28 @@ namespace OpenRA.Mods.Common.Traits
 			if (cargo.Any())
 			{
 				foreach (var c in cargo)
+				{
 					if (Info.PassengerConditions.TryGetValue(c.Info.Name, out var passengerCondition))
 						passengerTokens.GetOrAdd(c.Info.Name).Push(self.GrantCondition(passengerCondition));
+
+					// here we add conditions to the transport of self, derived from passengers of self
+					if (self.TraitOrDefault<Passenger>() != null && self.TraitOrDefault<Passenger>().Transport != null)
+					{
+						if (self.TraitOrDefault<Passenger>().Transport.TraitOrDefault<Cargo>().Info.PassengerOfPassengersConditions.TryGetValue(c.Info.Name, out var passengerOfPassengerCondition)) {
+							passengerToTransportTokens.GetOrAdd(c.Info.Name).Push(self.TraitOrDefault<Passenger>().Transport.GrantCondition(passengerOfPassengerCondition));
+						}
+					}
+				}
+
+				// here we check if cargo is full and if so add the token to self and to possible transport having a passengersCargoFullCondition
+				if (totalWeight == Info.MaxWeight) {
+					if (cargoFullToken == Actor.InvalidConditionToken)
+						cargoFullToken = self.GrantCondition(Info.cargoFullCondition);
+
+					if (self.TraitOrDefault<Passenger>() != null && self.TraitOrDefault<Passenger>().Transport != null && passengersCargoFullToken == Actor.InvalidConditionToken) {
+						passengersCargoFullToken = self.TraitOrDefault<Passenger>().Transport.GrantCondition(self.TraitOrDefault<Passenger>().Transport.TraitOrDefault<Cargo>().Info.passengersCargoFullCondition);
+					}
+				}
 
 				if (!string.IsNullOrEmpty(Info.LoadedCondition))
 					loadedTokens.Push(self.GrantCondition(Info.LoadedCondition));
@@ -357,8 +393,17 @@ namespace OpenRA.Mods.Common.Traits
 			if (passengerTokens.TryGetValue(passenger.Info.Name, out var passengerToken) && passengerToken.Any())
 				self.RevokeCondition(passengerToken.Pop());
 
+			if (passengerToTransportTokens.TryGetValue(passenger.Info.Name, out var passengerOfPassengerToken) && passengerOfPassengerToken.Any())
+				self.RevokeCondition(passengerOfPassengerToken.Pop());
+
 			if (loadedTokens.Any())
 				self.RevokeCondition(loadedTokens.Pop());
+
+			if (cargoFullToken != Actor.InvalidConditionToken)
+				cargoFullToken = self.RevokeCondition(cargoFullToken);
+
+			if (passengersCargoFullToken != Actor.InvalidConditionToken)
+				passengersCargoFullToken = self.RevokeCondition(passengersCargoFullToken);
 
 			return passenger;
 		}
@@ -402,6 +447,27 @@ namespace OpenRA.Mods.Common.Traits
 
 			if (Info.PassengerConditions.TryGetValue(a.Info.Name, out var passengerCondition))
 				passengerTokens.GetOrAdd(a.Info.Name).Push(self.GrantCondition(passengerCondition));
+
+			// here we add conditions to the transport of self, derived from passengers of self
+			if (self.TraitOrDefault<Passenger>() != null && self.TraitOrDefault<Passenger>().Transport != null)
+			{
+				if (self.TraitOrDefault<Passenger>().Transport.TraitOrDefault<Cargo>().Info.PassengerOfPassengersConditions.TryGetValue(a.Info.Name, out var passengerOfPassengerCondition)) {
+					passengerToTransportTokens.GetOrAdd(a.Info.Name).Push(self.TraitOrDefault<Passenger>().Transport.GrantCondition(passengerOfPassengerCondition));
+				}
+			}
+
+			// here we check if cargo is full and if so add the token to self and to possible transport having a passengersCargoFullCondition
+			if (totalWeight == Info.MaxWeight) {
+
+				if (cargoFullToken == Actor.InvalidConditionToken)
+					cargoFullToken = self.GrantCondition(Info.cargoFullCondition);
+
+				if (self.TraitOrDefault<Passenger>() != null && self.TraitOrDefault<Passenger>().Transport != null && passengersCargoFullToken == Actor.InvalidConditionToken) {
+					//Game.Debug(self.TraitOrDefault<Passenger>().Transport.Info.Name.ToString());
+					//Game.Debug(self.TraitOrDefault<Passenger>().Transport.TraitOrDefault<Cargo>().Info.passengersCargoFullCondition.ToString());
+					passengersCargoFullToken = self.TraitOrDefault<Passenger>().Transport.GrantCondition(self.TraitOrDefault<Passenger>().Transport.TraitOrDefault<Cargo>().Info.passengersCargoFullCondition);
+				}
+			}
 
 			if (!string.IsNullOrEmpty(Info.LoadedCondition))
 				loadedTokens.Push(self.GrantCondition(Info.LoadedCondition));
