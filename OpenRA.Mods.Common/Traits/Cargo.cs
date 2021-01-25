@@ -195,8 +195,7 @@ namespace OpenRA.Mods.Common.Traits
 					if (Info.PassengerConditions.TryGetValue(c.Info.Name, out var passengerCondition))
 						passengerTokens.GetOrAdd(c.Info.Name).Push(self.GrantCondition(passengerCondition));
 
-					// here we add conditions to the transport of self, derived from passengers of self
-					// TODO
+					checkPassengerCargoConditions(self, c);
 				}
 
 				// here we check if cargo is full and if so add the token to self and to possible transport having a passengersCargoFullCondition
@@ -204,9 +203,6 @@ namespace OpenRA.Mods.Common.Traits
 					if (cargoFullToken == Actor.InvalidConditionToken)
 						cargoFullToken = self.GrantCondition(Info.CargoFullCondition);
 
-					if (self.TraitOrDefault<Passenger>() != null && self.TraitOrDefault<Passenger>().Transport != null && passengersCargoFullToken == Actor.InvalidConditionToken) {
-						passengersCargoFullToken = self.TraitOrDefault<Passenger>().Transport.GrantCondition(self.TraitOrDefault<Passenger>().Transport.TraitOrDefault<Cargo>().Info.PassengersCargoFullCondition);
-					}
 				}
 
 				if (!string.IsNullOrEmpty(Info.LoadedCondition))
@@ -434,6 +430,30 @@ namespace OpenRA.Mods.Common.Traits
 				passengersCargoFullToken = self.GrantCondition(Info.PassengersCargoFullCondition);
 		}
 
+		void checkPassengerCargoConditions(Actor self, Actor a) {
+			// if this cargo is loaded in another cargo and then something is loaded into it, check if there are conditions to grant to upper cargo
+			if (self.TraitOrDefault<Passenger>() != null && self.TraitOrDefault<Passenger>().Transport != null)
+			{
+				if (totalWeight == Info.MaxWeight)
+					self.TraitOrDefault<Passenger>().Transport.TraitOrDefault<Cargo>().GrantConditionToTransportWhenFull(self.TraitOrDefault<Passenger>().Transport);
+
+				self.TraitOrDefault<Passenger>().Transport.TraitOrDefault<Cargo>().GrantConditionFromCargoOfPassenger(self.TraitOrDefault<Passenger>().Transport, a);
+			}
+
+			// if a unit is loaded into this cargo and has cargo itself, check if there are conditions to grant to self from the cargo of cargo
+			if (a.TraitOrDefault<Cargo>() != null && a.TraitOrDefault<Cargo>().cargo != null)
+			{
+				if (a.TraitOrDefault<Cargo>().totalWeight == a.TraitOrDefault<Cargo>().Info.MaxWeight) {
+					self.TraitOrDefault<Cargo>().GrantConditionToTransportWhenFull(self);
+				}
+
+				foreach (var pp in a.TraitOrDefault<Cargo>().cargo)
+				{
+					self.TraitOrDefault<Cargo>().GrantConditionFromCargoOfPassenger(self, pp);
+				}
+			}
+		}
+
 		public void Load(Actor self, Actor a)
 		{
 			cargo.Add(a);
@@ -464,18 +484,7 @@ namespace OpenRA.Mods.Common.Traits
 			if (Info.PassengerConditions.TryGetValue(a.Info.Name, out var passengerCondition))
 				passengerTokens.GetOrAdd(a.Info.Name).Push(self.GrantCondition(passengerCondition));
 
-			// if this cargo is loaded in another cargo, then check if there are conditions to grant to upper cargo
-			if (self.TraitOrDefault<Passenger>() != null && self.TraitOrDefault<Passenger>().Transport != null)
-			{
-				if (totalWeight == Info.MaxWeight)
-					self.TraitOrDefault<Passenger>().Transport.TraitOrDefault<Cargo>().GrantConditionToTransportWhenFull(self.TraitOrDefault<Passenger>().Transport);
-
-				self.TraitOrDefault<Passenger>().Transport.TraitOrDefault<Cargo>().GrantConditionFromCargoOfPassenger(self.TraitOrDefault<Passenger>().Transport, a);
-			}
-
-			// TODO the case where a unit enters with cargo in it does not grant condition full condition to upper cargo....
-			//if (a.TraitOrDefault<Cargo>().totalWeight == a.TraitOrDefault<Cargo>().Info.MaxWeight)
-				//Game.Debug("full passenger entered cargo");
+			checkPassengerCargoConditions(self, a);
 
 			// here we check if cargo is full and if the token for it should be filled
 			if (totalWeight == Info.MaxWeight && cargoFullToken == Actor.InvalidConditionToken)
