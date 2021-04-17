@@ -57,6 +57,7 @@ namespace OpenRA.Mods.AS.Traits
 
 		[Sync]
 		int ticks;
+		int modifiedTicks;
 		int productionDuration;
 
 		public PeriodicCargoProducer(ActorInitializer init, PeriodicCargoProducerInfo info)
@@ -65,6 +66,7 @@ namespace OpenRA.Mods.AS.Traits
 			this.info = info;
 			self = init.Self;
 			ticks = 0;
+			modifiedTicks = 0;
 			productionDuration = 0;
 		}
 
@@ -81,52 +83,66 @@ namespace OpenRA.Mods.AS.Traits
 			if (IsTraitPaused)
 				return;
 
-			if (!IsTraitDisabled && --ticks < 0)
-			{
-				var sp = self.TraitsImplementing<Production>()
-				.FirstOrDefault(p => !p.IsTraitDisabled && !p.IsTraitPaused && p.Info.Produces.Contains(info.Type));
+			if (!IsTraitDisabled && --modifiedTicks < 0) {
+				// here we use a reload modifier even though this is a production, a bit "hacky" but actually exactly what we want
+				// with this a reload modifier can be applied when power is down or when something boost autoproduction
+				// we put this here and not in the calculateProductionCost function, because we want it to update regularly and not only after unit is produced
+				var modifiers = self.TraitsImplementing<IReloadModifier>()
+					.Select(m => m.GetReloadModifier());
 
-				var activated = false;
+				// here a tradeoff is chosen, 10 means the maximum speedup is 10
+				// with a higher number, the minimum build ticks increases to this number
+				modifiedTicks = Util.ApplyPercentageModifiers(10, modifiers);
+				ticks -= 10;
 
-				if (sp != null)
+				if (ticks < 0)
 				{
-					foreach (var passenger in self.TraitOrDefault<Cargo>().Passengers)
+					var sp = self.TraitsImplementing<Production>()
+					.FirstOrDefault(p => !p.IsTraitDisabled && !p.IsTraitPaused && p.Info.Produces.Contains(info.Type));
+
+					var activated = false;
+
+					if (sp != null)
 					{
-						var name = passenger.Info.Name;
-						//var placed = false;
-
-						var inits = new TypeDictionary
+						foreach (var passenger in self.TraitOrDefault<Cargo>().Passengers)
 						{
-							new OwnerInit(self.Owner),
-							new FactionInit(sp.Faction)
-						};
+							var name = passenger.Info.Name;
+							//var placed = false;
 
-						activated |= sp.Produce(self, passenger.Info, info.Type, inits, 0, unit => {
-							//Game.Debug(String.Join("; ", firedBy.TraitOrDefault<Production>() ));
-							GrantCondition(unit, info.Condition);
-
-							if( passenger.TraitOrDefault<Cargo>() != null )
+							var inits = new TypeDictionary
 							{
-								foreach (var p in passenger.TraitOrDefault<Cargo>().Passengers)
+								new OwnerInit(self.Owner),
+								new FactionInit(sp.Faction)
+							};
+
+							activated |= sp.Produce(self, passenger.Info, info.Type, inits, 0, unit => {
+								//Game.Debug(String.Join("; ", firedBy.TraitOrDefault<Production>() ));
+								GrantCondition(unit, info.Condition);
+
+								if( passenger.TraitOrDefault<Cargo>() != null )
 								{
-										//Game.Debug(String.Join("; ", passenger.TraitOrDefault<Cargo>().Passengers));
-										//Game.Debug(p.Info.Name);
+									foreach (var p in passenger.TraitOrDefault<Cargo>().Passengers)
+									{
+											//Game.Debug(String.Join("; ", passenger.TraitOrDefault<Cargo>().Passengers));
+											//Game.Debug(p.Info.Name);
 
-										var newPassenger = self.World.CreateActor(false, p.Info.Name, inits);
-										unit.TraitOrDefault<Cargo>().Load(unit, newPassenger);
+											var newPassenger = self.World.CreateActor(false, p.Info.Name, inits);
+											unit.TraitOrDefault<Cargo>().Load(unit, newPassenger);
+									}
 								}
-							}
-						});
+							});
+						}
 					}
+
+					if (activated)
+						Game.Sound.PlayNotification(self.World.Map.Rules, self.Owner, "Speech", info.ReadyAudio, self.Owner.Faction.InternalName);
+					else
+						Game.Sound.PlayNotification(self.World.Map.Rules, self.Owner, "Speech", info.BlockedAudio, self.Owner.Faction.InternalName);
+
+					ticks = calculateProductionCost();
 				}
-
-				if (activated)
-					Game.Sound.PlayNotification(self.World.Map.Rules, self.Owner, "Speech", info.ReadyAudio, self.Owner.Faction.InternalName);
-				else
-					Game.Sound.PlayNotification(self.World.Map.Rules, self.Owner, "Speech", info.BlockedAudio, self.Owner.Faction.InternalName);
-
-				ticks = calculateProductionCost();
 			}
+
 		}
 
 		int calculateProductionCost()
@@ -144,11 +160,7 @@ namespace OpenRA.Mods.AS.Traits
 						}
 					}
 			}
-			// here we use a reload modifier even though this is a production, a bit "hacky" but actually exactly what we want
-			var modifiers = self.TraitsImplementing<IReloadModifier>()
-				.Select(m => m.GetReloadModifier());
-
-			productionDuration = summedCost * Util.ApplyPercentageModifiers(info.ChargeDuration, modifiers) / 1000;
+			productionDuration = summedCost * info.ChargeDuration / 1000;
 			productionDuration = productionDuration == 0 ? 0 : productionDuration;
 			return productionDuration;
 		}
