@@ -120,6 +120,7 @@ namespace OpenRA.Mods.Common.Traits
 		Aircraft aircraft;
 		int loadingToken = Actor.InvalidConditionToken;
 		int cargoFullToken = Actor.InvalidConditionToken;
+		int conditionFromPassengerToken = Actor.InvalidConditionToken;
 		int passengersCargoFullToken = Actor.InvalidConditionToken;
 		Stack<int> loadedTokens = new Stack<int>();
 		bool takeOffAfterLoad;
@@ -405,6 +406,9 @@ namespace OpenRA.Mods.Common.Traits
 			if (passengersCargoFullToken != Actor.InvalidConditionToken)
 				passengersCargoFullToken = self.RevokeCondition(passengersCargoFullToken);
 
+			if (conditionFromPassengerToken != Actor.InvalidConditionToken)
+				conditionFromPassengerToken = self.RevokeCondition(conditionFromPassengerToken);
+
 			return passenger;
 		}
 
@@ -431,12 +435,19 @@ namespace OpenRA.Mods.Common.Traits
 		}
 
 		void checkPassengerCargoConditions(Actor self, Actor a) {
+			// the simple case: a passenger has ConditionToCargo
+			if (a.TraitOrDefault<Passenger>().Info.ConditionToCargo != null) {
+				conditionFromPassengerToken = self.GrantCondition(a.TraitOrDefault<Passenger>().Info.ConditionToCargo);
+			}
+
 			// if this cargo is loaded in another cargo and then something is loaded into it, check if there are conditions to grant to upper cargo
 			if (self.TraitOrDefault<Passenger>() != null && self.TraitOrDefault<Passenger>().Transport != null)
 			{
+				// when full
 				if (totalWeight == Info.MaxWeight)
 					self.TraitOrDefault<Passenger>().Transport.TraitOrDefault<Cargo>().GrantConditionToTransportWhenFull(self.TraitOrDefault<Passenger>().Transport);
 
+				// passenger of passengers can grant conditions to self
 				self.TraitOrDefault<Passenger>().Transport.TraitOrDefault<Cargo>().GrantConditionFromCargoOfPassenger(self.TraitOrDefault<Passenger>().Transport, a);
 			}
 
