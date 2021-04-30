@@ -38,8 +38,12 @@ namespace OpenRA.Mods.Common.Traits
 		public readonly Dictionary<string, string> CargoConditions = new Dictionary<string, string>();
 
 		[GrantedConditionReference]
-		[Desc("The condition to grant to the Cargo when this actor is loaded inside any transport.")]
+		[Desc("The condition to grant to the Transporter when its Cargo is loaded with this actor.")]
 		public readonly string ConditionToCargo = null;
+
+		[GrantedConditionReference]
+		[Desc("The condition to grant to the Transporter of the Transporter of this passenger.")]
+		public readonly string ConditionToCargoOfCargo = null;
 
 		[GrantedConditionReference]
 		public IEnumerable<string> LinterCargoConditions { get { return CargoConditions.Values; } }
