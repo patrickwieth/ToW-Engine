@@ -490,9 +490,9 @@ namespace OpenRA.Mods.Common.Traits
 		{
 			// check if there is a highlander condition (there can only be one)
 			if (a.TraitOrDefault<Passenger>().Info.Highlander) {
-				foreach (var c in cargo) {
-					if (c.TraitOrDefault<Passenger>().Info.Highlander) {
-						c.Kill(self);
+				for(int i = cargo.Count - 1; i >= 0; --i) {
+					if (cargo[i].TraitOrDefault<Passenger>().Info.Highlander) {
+						cargo[i].Kill(self);
 					}
 				}
 			}
