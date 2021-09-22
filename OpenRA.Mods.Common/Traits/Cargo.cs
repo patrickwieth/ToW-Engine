@@ -488,6 +488,15 @@ namespace OpenRA.Mods.Common.Traits
 
 		public void Load(Actor self, Actor a)
 		{
+			// check if there is a highlander condition (there can only be one)
+			if (a.TraitOrDefault<Passenger>().Info.Highlander) {
+				foreach (var c in cargo) {
+					if (c.TraitOrDefault<Passenger>().Info.Highlander) {
+						c.Kill(self);
+					}
+				}
+			}
+
 			cargo.Add(a);
 			var w = GetWeight(a);
 			totalWeight += w;

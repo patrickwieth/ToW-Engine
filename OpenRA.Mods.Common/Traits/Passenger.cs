@@ -28,6 +28,9 @@ namespace OpenRA.Mods.Common.Traits
 
 		public readonly int Weight = 1;
 
+		[Desc("Only one unit with Highlander true can be loaded into a cargo, all previous passenger with this trait will be killed.")]
+		public readonly bool Highlander = false;
+
 		[GrantedConditionReference]
 		[Desc("The condition to grant to when this actor is loaded inside any transport.")]
 		public readonly string CargoCondition = null;
